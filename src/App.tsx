@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, AlertTriangle, Brain, BarChart3, Settings, RefreshCw, Bell } from 'lucide-react';
 import { marketDataService, RealTimeMarketData } from './services/marketDataService';
+import { RealTimeIndicator } from './components/RealTimeIndicator';
+
+// Mock data structures and API simulation
+interface MarketData {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  high24h: number;
+  low24h: number;
+  timestamp: string;
+  history: { date: string; price: number; volume: number }[];
+}
 
 interface Alert {
   id: string;
@@ -20,21 +35,64 @@ const MarketMirror: React.FC = () => {
   const [marketType, setMarketType] = useState<'stocks' | 'crypto' | 'ecommerce'>('crypto');
   const [selectedItems, setSelectedItems] = useState<string[]>(['BTC', 'ETH', 'SOL']);
   const [timeRange, setTimeRange] = useState<string>('7d');
-  const [marketData, setMarketData] = useState<RealTimeMarketData[]>([]);
+  const [marketData, setMarketData] = useState<MarketData[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [aiInsights, setAiInsights] = useState<AIInsight | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [alertThreshold, setAlertThreshold] = useState<number>(8);
   const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [isConnected, setIsConnected] = useState<boolean>(true);
+
+  // Mock API data generator
+  const generateMockData = (symbol: string, type: string): MarketData => {
+    const basePrice = type === 'crypto' ? 
+      (symbol === 'BTC' ? 65000 : symbol === 'ETH' ? 3200 : 180) :
+      type === 'stocks' ?
+      (symbol === 'AAPL' ? 190 : symbol === 'GOOGL' ? 140 : 350) :
+      (Math.random() * 100 + 50);
+
+    const change = (Math.random() - 0.5) * basePrice * 0.1;
+    const changePercent = (change / basePrice) * 100;
+
+    // Generate historical data
+    const history = [];
+    let currentPrice = basePrice;
+    const days = timeRange === '1d' ? 24 : timeRange === '7d' ? 7 : timeRange === '1m' ? 30 : 90;
+    
+    for (let i = days; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const volatility = (Math.random() - 0.5) * 0.05;
+      currentPrice *= (1 + volatility);
+      history.push({
+        date: date.toISOString().split('T')[0],
+        price: currentPrice,
+        volume: Math.random() * 1000000 + 100000
+      });
+    }
+
+    return {
+      symbol,
+      name: symbol,
+      price: basePrice + change,
+      change,
+      changePercent,
+      volume: Math.random() * 1000000 + 100000,
+      high24h: basePrice * 1.05,
+      low24h: basePrice * 0.95,
+      timestamp: new Date().toISOString(),
+      history
+    };
+  };
 
   // AI Analysis simulation
-  const generateAIInsights = (data: RealTimeMarketData[]): AIInsight => {
+  const generateAIInsights = (data: MarketData[]): AIInsight => {
     const avgChange = data.reduce((sum, item) => sum + item.changePercent, 0) / data.length;
     const volatility = data.reduce((sum, item) => sum + Math.abs(item.changePercent), 0) / data.length;
     
     const trendDirection = avgChange > 2 ? 'bullish' : avgChange < -2 ? 'bearish' : 'neutral';
     
-    const summary = `Real-time analysis of ${data.length} assets. Average change: ${avgChange.toFixed(2)}%. ` +
+    const summary = `Market analysis for ${data.length} assets over ${timeRange}. Average change: ${avgChange.toFixed(2)}%. ` +
       `${trendDirection === 'bullish' ? 'Strong upward momentum observed.' : 
         trendDirection === 'bearish' ? 'Downward pressure detected.' : 'Sideways movement with mixed signals.'}`;
 
@@ -53,7 +111,7 @@ const MarketMirror: React.FC = () => {
   };
 
   // Alert detection
-  const checkAlerts = (data: RealTimeMarketData[]) => {
+  const checkAlerts = (data: MarketData[]) => {
     const newAlerts: Alert[] = [];
     
     data.forEach(item => {
@@ -72,23 +130,16 @@ const MarketMirror: React.FC = () => {
     }
   };
 
-  // Real data fetching
+  // Data fetching simulation
   const fetchMarketData = async () => {
     setIsLoading(true);
     
     try {
-      let data: RealTimeMarketData[] = [];
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      if (marketType === 'crypto') {
-        data = await marketDataService.fetchCryptoData(selectedItems);
-      } else if (marketType === 'stocks') {
-        data = await marketDataService.fetchStockData(selectedItems);
-      } else if (marketType === 'ecommerce') {
-        data = await marketDataService.fetchEcommerceData(selectedItems);
-      }
-      
+      const data = selectedItems.map(item => generateMockData(item, marketType));
       setMarketData(data);
-      setLastUpdate(new Date().toLocaleTimeString());
       
       // Generate AI insights
       const insights = generateAIInsights(data);
@@ -97,9 +148,10 @@ const MarketMirror: React.FC = () => {
       // Check for alerts
       checkAlerts(data);
       
+      setIsConnected(true);
     } catch (error) {
       console.error('Error fetching market data:', error);
-      // You could show an error message to the user here
+      setIsConnected(false);
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +164,7 @@ const MarketMirror: React.FC = () => {
     return () => clearInterval(interval);
   }, [selectedItems, timeRange, marketType]);
 
-  const PriceChart: React.FC<{ data: RealTimeMarketData }> = ({ data }) => {
+  const PriceChart: React.FC<{ data: MarketData }> = ({ data }) => {
     const maxPrice = Math.max(...data.history.map(h => h.price));
     const minPrice = Math.min(...data.history.map(h => h.price));
     const range = maxPrice - minPrice;
@@ -261,11 +313,7 @@ const MarketMirror: React.FC = () => {
                 <RefreshCw className={isLoading ? 'animate-spin' : ''} size={16} />
                 {isLoading ? 'Fetching Real Data...' : 'Refresh Data'}
               </button>
-              {lastUpdate && (
-                <span className="text-sm text-gray-400">
-                  Last updated: {lastUpdate}
-                </span>
-              )}
+              <RealTimeIndicator isConnected={isConnected} lastUpdate={lastUpdate} />
             </div>
           </div>
         </div>
@@ -308,7 +356,7 @@ const MarketMirror: React.FC = () => {
                 type="text"
                 value={selectedItems.join(', ')}
                 onChange={(e) => setSelectedItems(e.target.value.split(', ').map(s => s.trim()))}
-                placeholder={marketType === 'stocks' ? 'AAPL, GOOGL, MSFT' : marketType === 'crypto' ? 'BTC, ETH, SOL' : 'iPhone15, AirPods, MacBook'}
+                placeholder="BTC, ETH, SOL"
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -334,7 +382,7 @@ const MarketMirror: React.FC = () => {
               {isLoading ? (
                 <div className="bg-gray-800 rounded-lg p-8 text-center">
                   <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-400">Fetching real-time market data...</p>
+                  <p className="text-gray-400">Loading market data...</p>
                 </div>
               ) : (
                 <div className="space-y-4">
